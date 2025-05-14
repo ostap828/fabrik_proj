@@ -1153,26 +1153,37 @@ class ТрикотажнаяФабрикаGUI:
         messagebox.showinfo("Успех", f"{count} вещ(ей) успешно перенесено в ассортимент магазина")
 
     def показать_изображение(self, event):
-        selected_item = self.список_одежды.selection()
-        if selected_item:
-            item = self.список_одежды.item(selected_item[0])
-            values = item['values']
-            название = values[0]
+        selected_items = self.список_одежды.selection()
+        if selected_items:
+            item_iid = selected_items[0]  # Этот iid - это clothing.id из базы данных
 
-            # Находим одежду по названию
-            одежда = next((о for о in self.фабрика.inventory if о.name == название), None)
-            if одежда and одежда.image_path:
+            # Получаем image_path из базы данных
+            self.cursor.execute("SELECT image_path FROM clothing WHERE id = %s", (item_iid,))
+            result = self.cursor.fetchone()
+
+            if result and result[0]:  # result[0] это image_path
+                image_path = result[0]
                 try:
-                    image = Image.open(одежда.image_path)
+                    image = Image.open(image_path)
                     image = image.resize((300, 300), Image.Resampling.LANCZOS)
                     photo = ImageTk.PhotoImage(image)
                     self.метка_изображения.configure(image=photo)
-                    self.метка_изображения.image = photo
+                    self.метка_изображения.image = photo  # Сохраняем ссылку!
+                except FileNotFoundError:
+                    self.метка_изображения.configure(image='')
+                    self.метка_изображения.image = None # Очищаем ссылку
+                    # Опционально: можно показать сообщение, что файл не найден
+                    print(f"Файл изображения не найден: {image_path}")
                 except Exception as e:
                     self.метка_изображения.configure(image='')
+                    self.метка_изображения.image = None # Очищаем ссылку
                     messagebox.showerror("Ошибка", f"Не удалось загрузить изображение: {e}")
             else:
                 self.метка_изображения.configure(image='')
+                self.метка_изображения.image = None # Очищаем ссылку
+        else:
+            self.метка_изображения.configure(image='')
+            self.метка_изображения.image = None # Очищаем ссылку
 
     def обновить_список_одежды(self):
         # Очищаем список
@@ -1184,7 +1195,7 @@ class ТрикотажнаяФабрикаGUI:
 
         # Формируем SQL-запрос
         query = """
-            SELECT name, size, color, material, price
+            SELECT id, name, size, color, material, price
             FROM clothing
             WHERE (material IS NULL OR material != 'Ассортимент магазина')
         """
@@ -1197,17 +1208,18 @@ class ТрикотажнаяФабрикаGUI:
         self.cursor.execute(query, params)
         rows = self.cursor.fetchall()
 
-        for row in rows:
-            self.список_одежды.insert("", "end", values=(
-                row[0],  # Название
-                row[1],  # Размер
-                row[2],  # Цвет
-                row[3],  # Материал
-                f"{row[4]} руб."
+        for row in rows: # row теперь (id, name, size, color, material, price)
+            self.список_одежды.insert("", "end", iid=row[0], values=(
+                row[1],  # Название
+                row[2],  # Размер
+                row[3],  # Цвет
+                row[4],  # Материал
+                f"{row[5]} руб." # Цена
             ))
 
         # Обновляем общую стоимость
-        общая_стоимость = sum(row[4] for row in rows if row[4] is not None)
+        # Индекс для цены теперь 5, так как row[0] это id
+        общая_стоимость = sum(row[5] for row in rows if row[5] is not None)
         self.метка_стоимости.configure(text=f"Общая стоимость: {общая_стоимость} руб.")
 
     def выбрать_изображение(self):
